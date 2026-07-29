@@ -19,6 +19,13 @@ interface Props {
   onExit: () => void;
   onFinish: (exerciseLogs: { exerciseId: string; sets: SetLog[] }[]) => void;
   elapsedSec: number;
+  /** Resume from draft */
+  initialRows?: Record<string, SetLog[]>;
+  initialExerciseIdx?: number;
+  onDraftChange?: (payload: {
+    exerciseIdx: number;
+    rows: Record<string, SetLog[]>;
+  }) => void;
 }
 
 const iconBtnStyle: React.CSSProperties = {
@@ -130,23 +137,53 @@ export function StrengthWorkout({
   onExit,
   onFinish,
   elapsedSec,
+  initialRows,
+  initialExerciseIdx = 0,
+  onDraftChange,
 }: Props) {
   const exercises = session.exercises ?? [];
-  const [idx, setIdx] = useState(0);
-  const [rows, setRows] = useState<Record<string, SetLog[]>>({});
+  const [idx, setIdx] = useState(() =>
+    Math.min(Math.max(0, initialExerciseIdx), Math.max(0, exercises.length - 1)),
+  );
+  const [rows, setRows] = useState<Record<string, SetLog[]>>(() => initialRows ?? {});
   const [resting, setResting] = useState(false);
   const [restLeft, setRestLeft] = useState(0);
   const [toast, setToast] = useState<{ text: string; pr: boolean } | null>(null);
   const timerRef = useRef<number | null>(null);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const idxRef = useRef(idx);
+  idxRef.current = idx;
+  const saveTimer = useRef<number | null>(null);
 
   const ex = exercises[idx];
+
+  const persistDraft = (nextRows: Record<string, SetLog[]>, nextIdx: number) => {
+    if (!onDraftChange) return;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      onDraftChange({ exerciseIdx: nextIdx, rows: nextRows });
+    }, 200);
+  };
 
   useEffect(() => {
     setRows((prev) => {
       if (prev[ex.id]) return prev;
-      return { ...prev, [ex.id]: emptyRows(ex, week) };
+      const next = { ...prev, [ex.id]: emptyRows(ex, week) };
+      persistDraft(next, idx);
+      return next;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ex.id, ex, week]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      // flush on unmount (back / navigate away)
+      onDraftChange?.({ exerciseIdx: idxRef.current, rows: rowsRef.current });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!resting) return;
@@ -172,7 +209,9 @@ export function StrengthWorkout({
     setRows((prev) => {
       const arr = [...(prev[ex.id] || [])];
       arr[setIdx] = { ...arr[setIdx], [field]: val };
-      return { ...prev, [ex.id]: arr };
+      const next = { ...prev, [ex.id]: arr };
+      persistDraft(next, idx);
+      return next;
     });
   };
 
@@ -193,7 +232,9 @@ export function StrengthWorkout({
           reps: prev.reps,
           rpe: prev.rpe,
         };
-        return { ...p, [ex.id]: arr };
+        const next = { ...p, [ex.id]: arr };
+        persistDraft(next, idx);
+        return next;
       });
     } else if (fallback) {
       setRows((p) => {
@@ -204,7 +245,9 @@ export function StrengthWorkout({
           reps: fallback.reps,
           rpe: fallback.rpe,
         };
-        return { ...p, [ex.id]: arr };
+        const next = { ...p, [ex.id]: arr };
+        persistDraft(next, idx);
+        return next;
       });
     }
   };
@@ -629,7 +672,11 @@ export function StrengthWorkout({
       <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
         <button
           type="button"
-          onClick={() => setIdx((i) => Math.max(0, i - 1))}
+          onClick={() => {
+            const next = Math.max(0, idx - 1);
+            setIdx(next);
+            persistDraft(rowsRef.current, next);
+          }}
           disabled={idx === 0}
           style={{ ...navBtnStyle, opacity: idx === 0 ? 0.35 : 1 }}
         >
@@ -646,7 +693,11 @@ export function StrengthWorkout({
         ) : (
           <button
             type="button"
-            onClick={() => setIdx((i) => Math.min(exercises.length - 1, i + 1))}
+            onClick={() => {
+              const next = Math.min(exercises.length - 1, idx + 1);
+              setIdx(next);
+              persistDraft(rowsRef.current, next);
+            }}
             style={{ ...navBtnStyle, background: C.accent, color: "#1A1006", border: "none", flex: 2 }}
           >
             Next <ChevronRight size={16} />

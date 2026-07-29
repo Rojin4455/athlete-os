@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronLeft, Check } from "lucide-react";
 import { C, FONTS } from "../lib/tokens";
 import { fmtClock } from "../lib/dates";
@@ -7,6 +7,7 @@ import {
   getSprint,
   type SessionDef,
 } from "../data/program";
+import type { ActiveWorkoutDraft } from "../db";
 
 interface Props {
   session: SessionDef;
@@ -18,23 +19,68 @@ interface Props {
     notes?: string;
   }) => void;
   elapsedSec: number;
+  initialExtras?: ActiveWorkoutDraft["extras"];
+  onDraftChange?: (extras: ActiveWorkoutDraft["extras"]) => void;
 }
 
-export function FootballWorkout({ session, week, onExit, onFinish, elapsedSec }: Props) {
+export function FootballWorkout({
+  session,
+  week,
+  onExit,
+  onFinish,
+  elapsedSec,
+  initialExtras,
+  onDraftChange,
+}: Props) {
   const drills = footballDrillsForWeek(week);
   const sprint = getSprint(week);
-  const [done, setDone] = useState<Record<string, boolean>>({});
-  const [sprintTimes, setSprintTimes] = useState<string[]>([]);
-  const [notes, setNotes] = useState("");
+  const [done, setDone] = useState<Record<string, boolean>>(initialExtras?.drillsDone ?? {});
+  const [sprintTimes, setSprintTimes] = useState<string[]>(initialExtras?.sprintTimes ?? []);
+  const [notes, setNotes] = useState(initialExtras?.notes ?? "");
+  const saveTimer = useRef<number | null>(null);
+  const stateRef = useRef({ done, sprintTimes, notes });
+  stateRef.current = { done, sprintTimes, notes };
 
   const hasSprints = sprint.sprintSec != null && sprint.reps != null;
   const totalSprintReps = hasSprints ? (sprint.reps! * (sprint.sets || 1)) : 0;
 
+  const flush = (patch?: Partial<typeof stateRef.current>) => {
+    if (!onDraftChange) return;
+    const s = { ...stateRef.current, ...patch };
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      onDraftChange({
+        drillsDone: s.done,
+        sprintTimes: s.sprintTimes,
+        notes: s.notes,
+      });
+    }, 200);
+  };
+
   useEffect(() => {
-    if (totalSprintReps > 0) {
-      setSprintTimes(Array.from({ length: totalSprintReps }, () => ""));
+    if (totalSprintReps > 0 && sprintTimes.length !== totalSprintReps) {
+      setSprintTimes((prev) => {
+        if (prev.length === totalSprintReps) return prev;
+        const next = Array.from({ length: totalSprintReps }, (_, i) => prev[i] ?? "");
+        flush({ sprintTimes: next });
+        return next;
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalSprintReps]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      const s = stateRef.current;
+      onDraftChange?.({
+        drillsDone: s.done,
+        sprintTimes: s.sprintTimes,
+        notes: s.notes,
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const finish = () => {
     onFinish({
@@ -93,7 +139,11 @@ export function FootballWorkout({ session, week, onExit, onFinish, elapsedSec }:
           <button
             key={d.id}
             type="button"
-            onClick={() => setDone({ ...done, [d.id]: !done[d.id] })}
+            onClick={() => {
+              const next = { ...done, [d.id]: !done[d.id] };
+              setDone(next);
+              flush({ done: next });
+            }}
             style={{
               width: "100%",
               textAlign: "left",
@@ -169,6 +219,7 @@ export function FootballWorkout({ session, week, onExit, onFinish, elapsedSec }:
                       while (next.length < totalSprintReps) next.push("");
                       next[i] = e.target.value;
                       setSprintTimes(next);
+                      flush({ sprintTimes: next });
                     }}
                     style={{
                       width: "100%",
@@ -192,7 +243,10 @@ export function FootballWorkout({ session, week, onExit, onFinish, elapsedSec }:
 
       <textarea
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e) => {
+          setNotes(e.target.value);
+          flush({ notes: e.target.value });
+        }}
         placeholder="Session notes, gassing onset…"
         rows={2}
         style={{

@@ -1,18 +1,22 @@
-import { Check, Droplet, Moon, Scale, Play } from "lucide-react";
+import { Check, Droplet, Moon, Scale, Play, Heart } from "lucide-react";
 import { ReadinessRing } from "./ReadinessRing";
 import { C, FONTS } from "../lib/tokens";
 import { mondayIndexOf } from "../lib/dates";
 import { WEEK_TEMPLATE, type SessionDef } from "../data/program";
-import type { DailyLog, ReadinessLevel } from "../db";
+import type { DailyLog } from "../db";
+import type { ReadinessResult } from "../lib/readiness";
 
 interface Props {
   daily: DailyLog;
   setDailyField: <K extends keyof DailyLog>(field: K, value: DailyLog[K]) => void;
   onStart: () => void;
+  onDiscardInProgress?: () => void;
+  hasInProgress?: boolean;
   weekStatus: Record<number, "done" | "partial">;
   session: SessionDef;
   week: number;
   phase: string;
+  readiness: ReadinessResult;
 }
 
 const qBtnStyle: React.CSSProperties = {
@@ -31,18 +35,16 @@ export function TodayScreen({
   daily,
   setDailyField,
   onStart,
+  onDiscardInProgress,
+  hasInProgress,
   weekStatus,
   session,
   week,
   phase,
+  readiness,
 }: Props) {
   const dayIdx = mondayIndexOf();
-  const readinessScore = (() => {
-    const map: Record<ReadinessLevel, number> = { ready: 88, okay: 64, tired: 38 };
-    const base = daily.readiness ? map[daily.readiness] : 70;
-    const sleepAdj = daily.sleep != null ? Math.min(10, Math.max(-10, (daily.sleep - 7.5) * 6)) : 0;
-    return Math.round(Math.min(98, Math.max(20, base + sleepAdj)));
-  })();
+  const readinessScore = readiness.score;
 
   const waterTarget = 8;
   const isRest = session.kind === "rest";
@@ -117,6 +119,19 @@ export function TodayScreen({
               </button>
             ))}
           </div>
+          {readiness.tip && (
+            <div
+              style={{
+                fontFamily: FONTS.body,
+                fontSize: 11.5,
+                color: readiness.score < 48 ? C.warning : C.textFaint,
+                marginTop: 10,
+                lineHeight: 1.4,
+              }}
+            >
+              {readiness.tip}
+            </div>
+          )}
         </div>
       </div>
 
@@ -184,30 +199,53 @@ export function TodayScreen({
           {isRest && " · recover hard"}
         </div>
         {!isRest ? (
-          <button
-            type="button"
-            onClick={onStart}
-            style={{
-              width: "100%",
-              padding: "14px 0",
-              borderRadius: 14,
-              border: "none",
-              cursor: "pointer",
-              background: C.accent,
-              color: "#1A1006",
-              fontFamily: FONTS.body,
-              fontWeight: 600,
-              fontSize: 15,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              position: "relative",
-              boxShadow: `0 8px 20px -6px ${C.accentSoft}`,
-            }}
-          >
-            <Play size={16} fill="#1A1006" /> Start session
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onStart}
+              style={{
+                width: "100%",
+                padding: "14px 0",
+                borderRadius: 14,
+                border: "none",
+                cursor: "pointer",
+                background: C.accent,
+                color: "#1A1006",
+                fontFamily: FONTS.body,
+                fontWeight: 600,
+                fontSize: 15,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                position: "relative",
+                boxShadow: `0 8px 20px -6px ${C.accentSoft}`,
+              }}
+            >
+              <Play size={16} fill="#1A1006" /> {hasInProgress ? "Resume session" : "Start session"}
+            </button>
+            {hasInProgress && onDiscardInProgress && (
+              <button
+                type="button"
+                onClick={onDiscardInProgress}
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  padding: "10px 0",
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  background: "transparent",
+                  color: C.textFaint,
+                  fontFamily: FONTS.body,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  position: "relative",
+                }}
+              >
+                Discard in-progress
+              </button>
+            )}
+          </>
         ) : (
           <div
             style={{
@@ -281,7 +319,7 @@ export function TodayScreen({
       <div style={{ fontFamily: FONTS.body, fontSize: 12.5, color: C.textMuted, marginBottom: 10 }}>
         Quick log
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <div
           style={{
             background: C.surface,
@@ -375,6 +413,40 @@ export function TodayScreen({
                   "weight",
                   Math.round(((daily.weight ?? 68) + 0.2) * 10) / 10,
                 )
+              }
+              style={qBtnStyle}
+            >
+              +
+            </button>
+          </div>
+        </div>
+        <div
+          style={{
+            background: C.surface,
+            border: `1px solid ${C.borderSoft}`,
+            borderRadius: 16,
+            padding: "14px 10px",
+          }}
+        >
+          <Heart size={16} color={C.accent} />
+          <div style={{ fontFamily: FONTS.mono, fontSize: 18, color: C.text, marginTop: 8 }}>
+            {daily.restingHr ?? "–"}
+            <span style={{ fontSize: 11, color: C.textFaint }}>bpm</span>
+          </div>
+          <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() =>
+                setDailyField("restingHr", Math.max(40, (daily.restingHr ?? 60) - 1))
+              }
+              style={qBtnStyle}
+            >
+              –
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setDailyField("restingHr", Math.min(120, (daily.restingHr ?? 60) + 1))
               }
               style={qBtnStyle}
             >

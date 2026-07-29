@@ -4,8 +4,11 @@ import { StrengthWorkout } from "./components/StrengthWorkout";
 import { Zone2Workout } from "./components/Zone2Workout";
 import { FootballWorkout } from "./components/FootballWorkout";
 import { SummaryScreen } from "./components/SummaryScreen";
+import { ProgressScreen } from "./components/ProgressScreen";
+import { PlanScreen } from "./components/PlanScreen";
+import { YouScreen } from "./components/YouScreen";
+import { TrainScreen } from "./components/TrainScreen";
 import { BottomNav, type NavKey } from "./components/BottomNav";
-import { PlaceholderTab } from "./components/PlaceholderTab";
 import { C } from "./lib/tokens";
 import {
   todayKey,
@@ -14,7 +17,7 @@ import {
   phaseForWeek,
   weekStartKey,
 } from "./lib/dates";
-import { getSessionForDay } from "./data/program";
+import { getSessionForDay, WEEK_TEMPLATE, type SessionDef } from "./data/program";
 import {
   ensureSettings,
   getDaily,
@@ -24,11 +27,23 @@ import {
   markDayDone,
   saveSession,
   getLastSessionVolume,
+  db,
   type DailyLog,
   type ExerciseHistory,
   type SetLog,
   type SessionLog,
 } from "./db";
+import { getEffectiveSession, getEffectiveSessionForDay } from "./db/overrides";
+import {
+  clearDraft,
+  clearOldDrafts,
+  draftId,
+  getDraft,
+  getTodaysDraft,
+  saveDraft,
+  type ActiveWorkoutDraft,
+} from "./db/activeWorkout";
+import { computeReadiness } from "./lib/readiness";
 
 type View = "tab" | "workout" | "summary";
 
@@ -47,6 +62,8 @@ export default function App() {
   });
   const [history, setHistory] = useState<Record<string, ExerciseHistory>>({});
   const [weekStatus, setWeekStatus] = useState<Record<number, "done" | "partial">>({});
+  const [recentHr, setRecentHr] = useState<{ date: string; restingHr: number | null }[]>([]);
+  const [session, setSession] = useState<SessionDef>(() => getSessionForDay(mondayIndexOf()));
   const [elapsedSec, setElapsedSec] = useState(0);
   const [sessionLog, setSessionLog] = useState({
     sets: 0,
@@ -57,13 +74,16 @@ export default function App() {
   const sessionLogRef = useRef(sessionLog);
   sessionLogRef.current = sessionLog;
   const [summaryExtras, setSummaryExtras] = useState<{ sessionName: string }>({ sessionName: "" });
+  const [draft, setDraft] = useState<ActiveWorkoutDraft | null>(null);
+  const [hasInProgress, setHasInProgress] = useState(false);
   const tickRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
+  const draftRef = useRef<ActiveWorkoutDraft | null>(null);
+  draftRef.current = draft;
 
   const week = programStartDate ? programWeek(programStartDate) : 1;
   const phase = phaseForWeek(week);
   const dayIdx = mondayIndexOf();
-  const session = getSessionForDay(dayIdx);
 
   const loadAll = useCallback(async () => {
     const settings = await ensureSettings();
@@ -75,26 +95,81 @@ export default function App() {
     const wStatus = await getWeekStatus(weekStartKey());
     setWeekStatus(wStatus);
 
-    // Prefetch history for today's strength exercises
+    const recent: { date: string; restingHr: number | null }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const dt = new Date();
+      dt.setDate(dt.getDate() - i);
+      const key = todayKey(dt);
+      const row = await db.dailyLogs.get(key);
+      recent.push({ date: key, restingHr: row?.restingHr ?? (key === todayKey() ? d.restingHr : null) });
+    }
+    setRecentHr(recent);
+
+    const eff = await getEffectiveSessionForDay(mondayIndexOf());
+    setSession(eff);
+
     const hist: Record<string, ExerciseHistory> = {};
-    if (session.exercises) {
-      for (const ex of session.exercises) {
+    if (eff.exercises) {
+      for (const ex of eff.exercises) {
         const h = await getHistory(ex.id);
         if (h) hist[ex.id] = h;
       }
     }
     setHistory(hist);
+
+    await clearOldDrafts(todayKey());
+    const todays = await getTodaysDraft(todayKey());
+    setHasInProgress(Boolean(todays && todays.sessionId === eff.id));
+
     setReady(true);
-  }, [session.exercises]);
+  }, []);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
+  const beginTicker = (startedAt: number) => {
+    startedAtRef.current = startedAt;
+    setElapsedSec(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    clearTick();
+    tickRef.current = window.setInterval(() => {
+      setElapsedSec(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    }, 1000);
+  };
+
+  const writeDraft = async (next: ActiveWorkoutDraft) => {
+    setDraft(next);
+    draftRef.current = next;
+    await saveDraft(next);
+    setHasInProgress(true);
+  };
+
+  const reloadSession = async (sessionId?: string) => {
+    const eff = sessionId
+      ? await getEffectiveSession(sessionId)
+      : await getEffectiveSessionForDay(mondayIndexOf());
+    setSession(eff);
+    const hist: Record<string, ExerciseHistory> = {};
+    if (eff.exercises) {
+      for (const ex of eff.exercises) {
+        const h = await getHistory(ex.id);
+        if (h) hist[ex.id] = h;
+      }
+    }
+    setHistory(hist);
+    const d = await getDraft(eff.id);
+    setHasInProgress(Boolean(d));
+  };
+
   const setDailyField = async <K extends keyof DailyLog>(field: K, value: DailyLog[K]) => {
     const next = { ...daily, date: todayKey(), [field]: value };
     setDaily(next);
     await saveDaily(next);
+    if (field === "restingHr") {
+      setRecentHr((prev) =>
+        prev.map((r) => (r.date === todayKey() ? { ...r, restingHr: value as number | null } : r)),
+      );
+    }
   };
 
   const clearTick = () => {
@@ -104,23 +179,63 @@ export default function App() {
     }
   };
 
-  const startSession = async () => {
-    const prevVol = await getLastSessionVolume(session.id);
-    setSessionLog({ sets: 0, volume: 0, prs: 0, prevVolume: prevVol });
-    startedAtRef.current = Date.now();
-    setElapsedSec(0);
-    clearTick();
-    tickRef.current = window.setInterval(() => setElapsedSec((s) => s + 1), 1000);
+  const startSession = async (sessionId?: string) => {
+    const eff = sessionId
+      ? await getEffectiveSession(sessionId)
+      : await getEffectiveSessionForDay(mondayIndexOf());
+    setSession(eff);
+    const hist: Record<string, ExerciseHistory> = {};
+    if (eff.exercises) {
+      for (const ex of eff.exercises) {
+        const h = await getHistory(ex.id);
+        if (h) hist[ex.id] = h;
+      }
+    }
+    setHistory(hist);
+
+    const existing = await getDraft(eff.id);
+    const prevVol = existing?.sessionLog.prevVolume ?? (await getLastSessionVolume(eff.id));
+
+    if (existing) {
+      setSessionLog(existing.sessionLog);
+      setDraft(existing);
+      beginTicker(existing.startedAt);
+    } else {
+      const startedAt = Date.now();
+      const fresh: ActiveWorkoutDraft = {
+        id: draftId(todayKey(), eff.id),
+        date: todayKey(),
+        sessionId: eff.id,
+        week,
+        startedAt,
+        exerciseIdx: 0,
+        rows: {},
+        extras: {},
+        sessionLog: { sets: 0, volume: 0, prs: 0, prevVolume: prevVol },
+        updatedAt: new Date().toISOString(),
+      };
+      setSessionLog(fresh.sessionLog);
+      await writeDraft(fresh);
+      beginTicker(startedAt);
+    }
     setView("workout");
   };
 
   const onLogSet = ({ volume, isPR }: { volume: number; isPR: boolean }) => {
-    setSessionLog((s) => ({
-      sets: s.sets + 1,
-      volume: s.volume + volume,
-      prs: s.prs + (isPR ? 1 : 0),
-      prevVolume: s.prevVolume,
-    }));
+    setSessionLog((s) => {
+      const next = {
+        sets: s.sets + 1,
+        volume: s.volume + volume,
+        prs: s.prs + (isPR ? 1 : 0),
+        prevVolume: s.prevVolume,
+      };
+      const d = draftRef.current;
+      if (d) {
+        const updated = { ...d, sessionLog: next };
+        void writeDraft(updated);
+      }
+      return next;
+    });
   };
 
   const persistComplete = async (
@@ -145,6 +260,9 @@ export default function App() {
       completed: true,
     };
     await saveSession(log);
+    await clearDraft(session.id);
+    setDraft(null);
+    setHasInProgress(false);
     await markDayDone(weekStartKey(), dayIdx, "done");
     setWeekStatus((prev) => ({ ...prev, [dayIdx]: "done" }));
     setSummaryExtras({ sessionName: session.name });
@@ -165,9 +283,22 @@ export default function App() {
   };
 
   const exitWorkout = () => {
+    // Draft already saved by child on unmount / changes
+    const d = draftRef.current;
+    if (d) {
+      void writeDraft({ ...d, sessionLog: sessionLogRef.current });
+    }
     clearTick();
+    setHasInProgress(true);
     setView("tab");
     setTab("today");
+  };
+
+  const discardInProgress = async () => {
+    if (!window.confirm("Discard in-progress workout? Logged sets in this draft will be lost.")) return;
+    await clearDraft(session.id);
+    setDraft(null);
+    setHasInProgress(false);
   };
 
   const volumeDelta =
@@ -175,12 +306,8 @@ export default function App() {
       ? Math.round(((sessionLog.volume - sessionLog.prevVolume) / sessionLog.prevVolume) * 100)
       : 0;
 
-  const readinessScore = (() => {
-    const map = { ready: 88, okay: 64, tired: 38 } as const;
-    const base = daily.readiness ? map[daily.readiness] : 70;
-    const sleepAdj = daily.sleep != null ? Math.min(10, Math.max(-10, (daily.sleep - 7.5) * 6)) : 0;
-    return Math.round(Math.min(98, Math.max(20, base + sleepAdj)));
-  })();
+  const readiness = computeReadiness(daily, recentHr);
+  const readinessScore = readiness.score;
 
   if (!ready) {
     return (
@@ -209,25 +336,44 @@ export default function App() {
           <TodayScreen
             daily={daily}
             setDailyField={setDailyField}
-            onStart={startSession}
+            onStart={() => void startSession()}
+            onDiscardInProgress={hasInProgress ? () => void discardInProgress() : undefined}
+            hasInProgress={hasInProgress}
             weekStatus={weekStatus}
             session={session}
             week={week}
             phase={phase}
+            readiness={readiness}
           />
         )}
 
-        {view === "tab" && tab !== "today" && (
-          <PlaceholderTab
-            tab={tab}
+        {view === "tab" && tab === "progress" && <ProgressScreen />}
+
+        {view === "tab" && tab === "plan" && (
+          <PlanScreen week={week} phase={phase} programStartDate={programStartDate} />
+        )}
+
+        {view === "tab" && tab === "you" && (
+          <YouScreen
             week={week}
             phase={phase}
             programStartDate={programStartDate}
+            daily={daily}
+          />
+        )}
+
+        {view === "tab" && tab === "train" && (
+          <TrainScreen
+            week={week}
+            onStartSession={(id) => {
+              void startSession(id);
+            }}
           />
         )}
 
         {view === "workout" && session.kind === "strength" && (
           <StrengthWorkout
+            key={draft?.id ?? session.id}
             session={session}
             week={week}
             history={history}
@@ -236,26 +382,52 @@ export default function App() {
             onExit={exitWorkout}
             onFinish={finishStrength}
             elapsedSec={elapsedSec}
+            initialRows={draft?.sessionId === session.id ? draft.rows : undefined}
+            initialExerciseIdx={draft?.sessionId === session.id ? draft.exerciseIdx : 0}
+            onDraftChange={({ exerciseIdx, rows }) => {
+              const base = draftRef.current;
+              if (!base) return;
+              void writeDraft({
+                ...base,
+                exerciseIdx,
+                rows,
+                sessionLog: sessionLogRef.current,
+              });
+            }}
           />
         )}
 
         {view === "workout" && session.kind === "zone2" && (
           <Zone2Workout
+            key={draft?.id ?? session.id}
             session={session}
             week={week}
             onExit={exitWorkout}
             onFinish={finishZone2}
             elapsedSec={elapsedSec}
+            initialExtras={draft?.sessionId === session.id ? draft.extras : undefined}
+            onDraftChange={(extras) => {
+              const base = draftRef.current;
+              if (!base) return;
+              void writeDraft({ ...base, extras, sessionLog: sessionLogRef.current });
+            }}
           />
         )}
 
         {view === "workout" && session.kind === "football" && (
           <FootballWorkout
+            key={draft?.id ?? session.id}
             session={session}
             week={week}
             onExit={exitWorkout}
             onFinish={finishFootball}
             elapsedSec={elapsedSec}
+            initialExtras={draft?.sessionId === session.id ? draft.extras : undefined}
+            onDraftChange={(extras) => {
+              const base = draftRef.current;
+              if (!base) return;
+              void writeDraft({ ...base, extras, sessionLog: sessionLogRef.current });
+            }}
           />
         )}
 
@@ -283,6 +455,7 @@ export default function App() {
             if (view === "workout") return;
             setView("tab");
             setTab(k);
+            if (k === "today") void reloadSession(WEEK_TEMPLATE[mondayIndexOf()].sessionId);
           }}
           hidden={hideNav}
         />

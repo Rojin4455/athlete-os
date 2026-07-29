@@ -381,3 +381,116 @@ export function getSprint(week: number): SprintProtocol {
 export function finisherMinutesForWeek(week: number): number {
   return week >= 5 ? 15 : 10;
 }
+
+/** Flat map of strength exercise id → display name */
+export function exerciseNameMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const s of Object.values(SESSIONS)) {
+    for (const ex of s.exercises ?? []) {
+      map[ex.id] = ex.name;
+    }
+  }
+  return map;
+}
+
+/** Primary compound lifts for Progress strength charts */
+export const TRACKED_LIFTS = [
+  "incline-press",
+  "flat-db-press",
+  "lat-pulldown",
+  "barbell-row",
+  "back-squat",
+  "rdl",
+  "hip-thrust",
+  "seated-db-shoulder-press",
+] as const;
+
+export const PHASES = [
+  {
+    id: 1 as const,
+    name: "Foundation",
+    weeks: [1, 2, 3, 4] as const,
+    focus: "Aerobic base, movement patterns, calisthenics/mobility habits. Cardio is the main adaptation.",
+  },
+  {
+    id: 2 as const,
+    name: "Build",
+    weeks: [5, 6, 7, 8] as const,
+    focus: "Lifting loads up, curved-treadmill sprints in, harder calisthenics variations.",
+  },
+  {
+    id: 3 as const,
+    name: "Intensify & Test",
+    weeks: [9, 10, 11, 12] as const,
+    focus: "Highest density, football conditioning peaks, Week 12 retest of all benchmarks.",
+  },
+] as const;
+
+/** Recomp nutrition from program doc — cycles by training vs rest day */
+export const NUTRITION = {
+  strategy: "Body recomposition",
+  kcalTrain: { min: 2500, max: 2650 },
+  kcalRest: { min: 2500, max: 2550 },
+  proteinG: { min: 150, max: 160 },
+  carbsTrainG: { min: 300, max: 330 },
+  carbsRestG: { min: 230, max: 250 },
+  fatG: { min: 70, max: 85 },
+  notes:
+    "Protein non-negotiable. Higher carbs on train days. Pre/post protein+carb within ~2h of hard sessions.",
+} as const;
+
+export function nutritionForDay(isRestDay: boolean) {
+  return {
+    kcal: isRestDay ? NUTRITION.kcalRest : NUTRITION.kcalTrain,
+    proteinG: NUTRITION.proteinG,
+    carbsG: isRestDay ? NUTRITION.carbsRestG : NUTRITION.carbsTrainG,
+    fatG: NUTRITION.fatG,
+    label: isRestDay ? "Rest day" : "Training day",
+  };
+}
+
+/** Default goal seeds from program checkpoints — editable after */
+export function defaultWeeklyGoals(week: number): string[] {
+  const z2 = getZone2(week);
+  const sprint = getSprint(week);
+  const goals = [
+    `Complete all 6 training sessions (rest Sunday counts)`,
+    `Zone 2: ${z2.durationMin > 0 ? `${z2.durationMin} min — ${z2.paceGuide}` : z2.paceGuide}`,
+    `Hit double-progression rule on key lifts (add load only when top of range ×2)`,
+  ];
+  if (sprint.sprintSec) {
+    goals.push(
+      `Sprints: ${sprint.reps}×${sprint.sprintSec}s × ${sprint.sets} set(s), ${sprint.recoverySec}s recovery`,
+    );
+  } else {
+    goals.push(`No sprints yet — protect Zone 2 base (${sprint.notes})`);
+  }
+  if (week === 1) goals.push("Record baseline 3km / 20-min time trial");
+  if (week === 12) goals.push("Week 12 retest: 3km TT, RSA set, Tanita, photos, top-set loads");
+  if (week === 11) goals.push("Deload feel — quality over volume");
+  return goals;
+}
+
+export function defaultMonthlyGoals(monthKey: string, week: number): string[] {
+  void monthKey;
+  const phase = week <= 4 ? 1 : week <= 8 ? 2 : 3;
+  if (phase === 1) {
+    return [
+      "Establish Zone 2 habit without chasing pace",
+      "Tanita scan + progress photos mid-phase",
+      "Unassisted pull-up path: dead hang → scap pulls consistent",
+    ];
+  }
+  if (phase === 2) {
+    return [
+      "Introduce RSA / curved sprints with full recovery quality",
+      "Progress calisthenics: negatives / single-leg tuck L-sit work",
+      "Gassing onset later in football / scrimmage",
+    ];
+  }
+  return [
+    "Peak football conditioning without junk volume",
+    "Week 12 full retest battery vs Week 1",
+    "Decide next 12-week block adjustments from data, not vibes",
+  ];
+}
