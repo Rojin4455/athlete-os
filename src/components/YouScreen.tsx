@@ -18,6 +18,7 @@ interface Props {
   phase: string;
   programStartDate: string;
   daily: DailyLog;
+  onResetTrainingData?: () => Promise<void>;
 }
 
 const section: React.CSSProperties = {
@@ -68,7 +69,7 @@ function ReviewCard({ review }: { review: PeriodReview }) {
   );
 }
 
-export function YouScreen({ week, phase, programStartDate, daily }: Props) {
+export function YouScreen({ week, phase, programStartDate, daily, onResetTrainingData }: Props) {
   const phaseNum = (week <= 4 ? 1 : week <= 8 ? 2 : 3) as 1 | 2 | 3;
   const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
   const [weekReview, setWeekReview] = useState<PeriodReview | null>(null);
@@ -77,6 +78,8 @@ export function YouScreen({ week, phase, programStartDate, daily }: Props) {
   const [milestones, setMilestones] = useState<
     Awaited<ReturnType<typeof listMilestoneProgress>>
   >([]);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const recent: { date: string; restingHr: number | null }[] = [];
@@ -103,6 +106,25 @@ export function YouScreen({ week, phase, programStartDate, daily }: Props) {
     const next = status === "done" ? "active" : "done";
     await setMilestoneStatus(id, next);
     await reload();
+  };
+
+  const handleReset = async () => {
+    if (!onResetTrainingData) return;
+    const ok = window.confirm(
+      "Delete all logged training data (sessions, PRs, progress, photos, goals, drafts)?\n\nWorkout templates stay. Week 1 will start on the coming Monday.\n\nThis cannot be undone.",
+    );
+    if (!ok) return;
+    setResetting(true);
+    setResetMsg(null);
+    try {
+      await onResetTrainingData();
+      setResetMsg("Cleared. Reloading…");
+      await reload();
+    } catch (e) {
+      setResetMsg(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResetting(false);
+    }
   };
 
   return (
@@ -247,6 +269,43 @@ export function YouScreen({ week, phase, programStartDate, daily }: Props) {
             );
           })}
         </div>
+      </div>
+
+      {/* Danger zone */}
+      <div style={section}>
+        <Title hint="Deletes logs, PRs, photos, goals, drafts. Keeps workout templates in the app code.">
+          Reset training data
+        </Title>
+        <p style={{ fontFamily: FONTS.body, fontSize: 12.5, color: C.textMuted, lineHeight: 1.45, margin: "0 0 12px" }}>
+          Clears test/logged data on this device
+          {onResetTrainingData ? " and cloud (if signed in)" : ""}. Sets Week 1 start to the coming
+          Monday. Does not delete your login or the program itself.
+        </p>
+        {resetMsg && (
+          <p style={{ fontFamily: FONTS.body, fontSize: 12.5, color: C.positive, marginBottom: 10 }}>
+            {resetMsg}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={resetting || !onResetTrainingData}
+          onClick={() => void handleReset()}
+          style={{
+            width: "100%",
+            padding: "13px 0",
+            borderRadius: 12,
+            border: `1px solid ${C.warning}`,
+            background: C.warningSoft,
+            color: C.warning,
+            fontFamily: FONTS.body,
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: resetting ? "wait" : "pointer",
+            opacity: resetting ? 0.7 : 1,
+          }}
+        >
+          {resetting ? "Resetting…" : "Reset all logged data"}
+        </button>
       </div>
     </div>
   );

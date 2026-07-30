@@ -44,6 +44,7 @@ import {
   type ActiveWorkoutDraft,
 } from "./db/activeWorkout";
 import { computeReadiness } from "./lib/readiness";
+import { resetTrainingData } from "./db/resetTrainingData";
 
 type View = "tab" | "workout" | "summary";
 
@@ -359,6 +360,16 @@ export default function App() {
             phase={phase}
             programStartDate={programStartDate}
             daily={daily}
+            onResetTrainingData={async () => {
+              await resetTrainingData();
+              setHistory({});
+              setWeekStatus({});
+              setDraft(null);
+              setView("tab");
+              setTab("today");
+              setReady(false);
+              await loadAll();
+            }}
           />
         )}
 
