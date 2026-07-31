@@ -1,6 +1,9 @@
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { C, FONTS } from "../lib/tokens";
 import {
   type SessionDef,
+  type FootballDrill,
   getZone2,
   getSprint,
   footballDrillsForWeek,
@@ -14,6 +17,53 @@ interface Props {
   week: number;
   history?: Record<string, ExerciseHistory>;
   customized?: boolean;
+}
+
+function CollapsibleDrill({ d }: { d: FootballDrill }) {
+  const [open, setOpen] = useState(false);
+  const hasDetail = Boolean(d.explain || (d.howTo && d.howTo.length > 0));
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={name}>{d.name}</div>
+          <div style={mute}>{d.detail}</div>
+          <div style={{ fontFamily: FONTS.mono, fontSize: 11, color: C.accent, marginTop: 2 }}>{d.reps}</div>
+        </div>
+        {hasDetail && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            style={{
+              border: "none",
+              background: "transparent",
+              padding: 4,
+              cursor: "pointer",
+              color: open ? C.accent : C.textFaint,
+              flexShrink: 0,
+            }}
+            aria-label={open ? "Hide details" : "Show details"}
+          >
+            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        )}
+      </div>
+      {hasDetail && open && (
+        <div style={{ marginTop: 6 }}>
+          {d.explain && <div style={{ ...mute, color: C.textMuted }}>{d.explain}</div>}
+          {d.howTo && d.howTo.length > 0 && (
+            <ul style={{ margin: "6px 0 0", paddingLeft: 16, ...mute }}>
+              {d.howTo.map((line, i) => (
+                <li key={i} style={{ marginBottom: 3 }}>
+                  {line}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SessionDetail({ session, week, history, customized }: Props) {
@@ -69,11 +119,7 @@ export function SessionDetail({ session, week, history, customized }: Props) {
       <div>
         {session.why && <p style={{ ...body, marginBottom: 10 }}>{session.why}</p>}
         {drills.map((d) => (
-          <div key={d.id} style={{ marginBottom: 10 }}>
-            <div style={name}>{d.name}</div>
-            <div style={mute}>{d.detail}</div>
-            <div style={{ fontFamily: FONTS.mono, fontSize: 11, color: C.accent, marginTop: 2 }}>{d.reps}</div>
-          </div>
+          <CollapsibleDrill key={d.id} d={d} />
         ))}
         <div style={{ ...label, marginTop: 8 }}>Curved treadmill</div>
         <Row

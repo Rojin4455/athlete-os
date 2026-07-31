@@ -43,6 +43,10 @@ export interface FootballDrill {
   name: string;
   detail: string;
   reps: string;
+  /** Plain-English what this drill is */
+  explain?: string;
+  /** Checklist / ladder patterns / setup steps to remember on the field */
+  howTo?: string[];
 }
 
 export interface SessionDef {
@@ -326,24 +330,144 @@ export const SPRINT_BY_WEEK: SprintProtocol[] = [
 export function footballDrillsForWeek(week: number): FootballDrill[] {
   if (week <= 4) {
     return [
-      { id: "ladder-accel", name: "Ladder/Cone Acceleration", detail: "5m, 10m — first-step quickness", reps: "6 reps, full recovery" },
-      { id: "shuttle-5105", name: "5-10-5 Shuttle", detail: "Learn deceleration/redirection — submaximal", reps: "4 reps, 90s rest, RPE 6" },
-      { id: "decel", name: "Deceleration Drills", detail: "Sprint 10m, controlled stop within 2 steps", reps: "6 reps" },
+      {
+        id: "ladder-accel",
+        name: "Ladder/Cone Acceleration",
+        detail: "5m, 10m — first-step quickness",
+        reps: "6 reps, full recovery",
+        explain:
+          "Warm the feet and teach a fast first step. Mix ladder footwork with short cone sprints — quality over speed.",
+        howTo: [
+          "Setup: agility ladder + 2 cones at ~5m and ~10m past the ladder (or just cones if no ladder).",
+          "Pick 2–3 ladder patterns below (don’t do all every week — rotate):",
+          "• 1-in each square (quick feet forward)",
+          "• 2-in each square (both feet in every box)",
+          "• Lateral shuffle (sideways through ladder)",
+          "• Icky shuffle (in-in-out pattern)",
+          "• High knees through ladder",
+          "Then accelerate: explode out of ladder → sprint to 5m cone, walk back.",
+          "Next reps: same but drive through to 10m cone.",
+          "Focus: short ground contact, lean slightly forward, arms pumping — not long strides yet.",
+          "Count: 6 quality reps total (mix 5m and 10m). Full recovery between (walk back, breathe).",
+        ],
+      },
+      {
+        id: "shuttle-5105",
+        name: "5-10-5 Shuttle",
+        detail: "Learn deceleration/redirection — submaximal",
+        reps: "4 reps, 90s rest, RPE 6",
+        explain:
+          "Also called the pro-agility drill. The numbers are distances in yards (or metres): 5 → 10 → 5. You change direction twice — not an all-out race this phase.",
+        howTo: [
+          "Setup: 3 cones in a straight line, 5 units apart (use metres if easier: cone A — 5m — cone B — 5m — cone C).",
+          "Start at the middle cone (B), in an athletic stance (or hand on the line).",
+          "1) Sprint to one side cone (A) — touch the line/cone with your hand.",
+          "2) Sprint past middle all the way to the far cone (C) — that’s the “10” (5+5).",
+          "3) Sprint back through middle to finish at the first side (A) — the last “5”.",
+          "That’s one rep: 5 + 10 + 5.",
+          "Phase 1: ~RPE 6 — smooth stops and turns, not max sprint. Plant outside foot, stay low.",
+          "4 reps · 90s rest between.",
+        ],
+      },
+      {
+        id: "decel",
+        name: "Deceleration Drills",
+        detail: "Sprint 10m, controlled stop within 2 steps",
+        reps: "6 reps",
+        explain: "Teaches braking — how you stop matters as much as how you sprint (injury prevention).",
+        howTo: [
+          "Mark 10m. Sprint hard to the line.",
+          "Stop in ≤2 steps past the line — drop hips, chop feet, don’t lock knees.",
+          "Walk back. 6 reps. Quality stops > raw speed.",
+        ],
+      },
     ];
   }
   if (week <= 8) {
     return [
-      { id: "shuttle-5105", name: "5-10-5 Shuttle", detail: "Intensity up", reps: "6 reps, RPE 8, 90s rest" },
-      { id: "sprint-cut", name: "20m Sprint + 180° Cut", detail: "Cut at 10m", reps: "6 reps, full recovery" },
-      { id: "box-drill", name: "Box Drill (4-cone)", detail: "Reactive agility", reps: "4 reps" },
-      { id: "curved-sprints", name: "Curved Treadmill Sprints", detail: "See sprint protocol for this week", reps: "per protocol" },
+      {
+        id: "shuttle-5105",
+        name: "5-10-5 Shuttle",
+        detail: "Intensity up",
+        reps: "6 reps, RPE 8, 90s rest",
+        explain:
+          "Same pattern as Phase 1 (5 + 10 + 5), now closer to game intensity — still clean turns.",
+        howTo: [
+          "3 cones in a line, 5 units apart. Start middle.",
+          "Sprint side → far side (10) → back through (5).",
+          "RPE ~8. 6 reps · 90s rest.",
+        ],
+      },
+      {
+        id: "sprint-cut",
+        name: "20m Sprint + 180° Cut",
+        detail: "Cut at 10m",
+        reps: "6 reps, full recovery",
+        explain: "Accelerate, plant, reverse — football change-of-direction.",
+        howTo: [
+          "Cone at 10m and 20m (or just mark 10m turn).",
+          "Sprint to 10m → plant and 180° turn → accelerate the other way (or finish the pattern as programmed).",
+          "6 reps, full recovery.",
+        ],
+      },
+      {
+        id: "box-drill",
+        name: "Box Drill (4-cone)",
+        detail: "Reactive agility",
+        reps: "4 reps",
+        explain: "Square of cones; run the perimeter with sharp corners.",
+        howTo: [
+          "4 cones in a square (~5m sides).",
+          "Sprint / shuffle / backpedal mix around the box (pick one pattern and stick to it for the set).",
+          "4 quality reps.",
+        ],
+      },
+      {
+        id: "curved-sprints",
+        name: "Curved Treadmill Sprints",
+        detail: "See sprint protocol for this week",
+        reps: "per protocol",
+        explain: "Logged in the sprint block below — follow this week’s reps/rest.",
+      },
     ];
   }
   return [
-    { id: "repeated-shuttle", name: "Repeated Shuttle Sets", detail: "3 sets of 4× 5-10-5 — match-play demand", reps: "60s between reps, 3 min between sets" },
-    { id: "sprint-decel-back", name: "30m Sprint-Decel-Backpedal", detail: "Combo pattern", reps: "6 reps" },
-    { id: "ssg", name: "Small-Sided Game / Scrimmage", detail: "Best transfer test if available", reps: "as available" },
-    { id: "curved-sprints", name: "Curved Treadmill Sprints", detail: "See sprint protocol for this week", reps: "per protocol" },
+    {
+      id: "repeated-shuttle",
+      name: "Repeated Shuttle Sets",
+      detail: "3 sets of 4× 5-10-5 — match-play demand",
+      reps: "60s between reps, 3 min between sets",
+      explain: "Stacked 5-10-5s under fatigue — closer to match stop-start.",
+      howTo: [
+        "Same 5-10-5 setup (middle start, 5 + 10 + 5).",
+        "4 shuttles = 1 set. Rest 60s between shuttles, 3 min between sets.",
+        "3 sets total.",
+      ],
+    },
+    {
+      id: "sprint-decel-back",
+      name: "30m Sprint-Decel-Backpedal",
+      detail: "Combo pattern",
+      reps: "6 reps",
+      howTo: [
+        "Sprint ~30m → controlled decel → backpedal part of the way back.",
+        "6 reps, recover fully between.",
+      ],
+    },
+    {
+      id: "ssg",
+      name: "Small-Sided Game / Scrimmage",
+      detail: "Best transfer test if available",
+      reps: "as available",
+      explain: "If you have a pitch/partners — play. Note when you start gassing.",
+    },
+    {
+      id: "curved-sprints",
+      name: "Curved Treadmill Sprints",
+      detail: "See sprint protocol for this week",
+      reps: "per protocol",
+      explain: "Logged in the sprint block below.",
+    },
   ];
 }
 

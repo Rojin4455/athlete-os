@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronLeft, Check } from "lucide-react";
+import { ChevronLeft, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { C, FONTS } from "../lib/tokens";
 import { fmtClock } from "../lib/dates";
 import {
@@ -37,6 +37,7 @@ export function FootballWorkout({
   const [done, setDone] = useState<Record<string, boolean>>(initialExtras?.drillsDone ?? {});
   const [sprintTimes, setSprintTimes] = useState<string[]>(initialExtras?.sprintTimes ?? []);
   const [notes, setNotes] = useState(initialExtras?.notes ?? "");
+  const [openHowTo, setOpenHowTo] = useState<Record<string, boolean>>({});
   const saveTimer = useRef<number | null>(null);
   const stateRef = useRef({ done, sprintTimes, notes });
   stateRef.current = { done, sprintTimes, notes };
@@ -135,44 +136,122 @@ export function FootballWorkout({
         <div style={{ fontFamily: FONTS.mono, fontSize: 11, color: C.accent, letterSpacing: 1, marginBottom: 12 }}>
           DRILLS
         </div>
-        {drills.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => {
-              const next = { ...done, [d.id]: !done[d.id] };
-              setDone(next);
-              flush({ done: next });
-            }}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              background: done[d.id] ? C.positiveSoft : C.surface2,
-              border: `1px solid ${done[d.id] ? C.positive : C.borderSoft}`,
-              borderRadius: 12,
-              padding: "12px 14px",
-              marginBottom: 8,
-              cursor: "pointer",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 10,
-            }}
-          >
-            <div>
-              <div style={{ fontFamily: FONTS.display, fontSize: 14, fontWeight: 600, color: C.text }}>
-                {d.name}
+        {drills.map((d) => {
+          const hasDetail = Boolean(d.explain || (d.howTo && d.howTo.length > 0));
+          const expanded = !!openHowTo[d.id];
+          return (
+            <div
+              key={d.id}
+              style={{
+                background: done[d.id] ? C.positiveSoft : C.surface2,
+                border: `1px solid ${done[d.id] ? C.positive : C.borderSoft}`,
+                borderRadius: 12,
+                marginBottom: 8,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "12px 14px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { ...done, [d.id]: !done[d.id] };
+                    setDone(next);
+                    flush({ done: next });
+                  }}
+                  style={{
+                    flex: 1,
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontFamily: FONTS.display, fontSize: 14, fontWeight: 600, color: C.text }}>
+                    {d.name}
+                  </div>
+                  <div style={{ fontFamily: FONTS.body, fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                    {d.detail}
+                  </div>
+                  <div style={{ fontFamily: FONTS.mono, fontSize: 11, color: C.textFaint, marginTop: 4 }}>
+                    {d.reps}
+                  </div>
+                </button>
+                {done[d.id] && (
+                  <Check size={16} color={C.positive} style={{ flexShrink: 0, marginTop: 2 }} />
+                )}
+                {hasDetail && (
+                  <button
+                    type="button"
+                    aria-label={expanded ? "Hide how-to" : "Show how-to"}
+                    onClick={() =>
+                      setOpenHowTo((prev) => ({ ...prev, [d.id]: !prev[d.id] }))
+                    }
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: `1px solid ${C.borderSoft}`,
+                      background: C.surface,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {expanded ? (
+                      <ChevronUp size={16} color={C.accent} />
+                    ) : (
+                      <ChevronDown size={16} color={C.textMuted} />
+                    )}
+                  </button>
+                )}
               </div>
-              <div style={{ fontFamily: FONTS.body, fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                {d.detail}
-              </div>
-              <div style={{ fontFamily: FONTS.mono, fontSize: 11, color: C.textFaint, marginTop: 4 }}>
-                {d.reps}
-              </div>
+              {hasDetail && expanded && (
+                <div
+                  style={{
+                    padding: "0 14px 12px",
+                    borderTop: `1px solid ${C.borderSoft}`,
+                  }}
+                >
+                  {d.explain && (
+                    <div
+                      style={{
+                        fontFamily: FONTS.body,
+                        fontSize: 12,
+                        color: C.textMuted,
+                        marginTop: 10,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {d.explain}
+                    </div>
+                  )}
+                  {d.howTo && d.howTo.length > 0 && (
+                    <ul
+                      style={{
+                        margin: "8px 0 0",
+                        paddingLeft: 16,
+                        fontFamily: FONTS.body,
+                        fontSize: 11.5,
+                        color: C.textFaint,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {d.howTo.map((line, i) => (
+                        <li key={i} style={{ marginBottom: 4 }}>
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
-            {done[d.id] && <Check size={16} color={C.positive} style={{ flexShrink: 0, marginTop: 2 }} />}
-          </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* Sprint protocol */}
